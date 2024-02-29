@@ -22,27 +22,25 @@ var PrettyName = "Viam cropping vision service"
 var Description = "A module of the Viam vision service that crops an image to an initial detection then runs other models to return detections"
 
 type Config struct {
-	CameraName             string  `json:"source_camera"`
-	CropDetectorName       string  `json:"crop_detector_name"`
-	CropDetectorConfidence float64 `json:"crop_detector_confidence"`
-	CropDetectorLabel      string  `json:"crop_detector_label"`
-	AgeClassifier          string  `json:"age_classifier_name"`
-	GenderClassifier       string  `json:"gender_classifier_name"`
+	Camera             string  `json:"camera"`
+	Detector           string  `json:"detector_service"`
+	DetectorConfidence float64 `json:"detector_confidence"`
+	Classifier         string  `json:"classifier_service"`
+	ClassifierResults  int     `json:"classifier_results"`
 }
 
 type myVisionSvc struct {
 	resource.Named
-	logger            logging.Logger
-	cam               camera.Camera
-	croppingDetector  vision.Service
-	croppingThreshold float64
-	cropLabel         string
-	ageClassifier     vision.Service
-	genderClassifier  vision.Service
-	mu                sync.RWMutex
-	cancelCtx         context.Context
-	cancelFunc        func()
-	done              chan bool
+	logger             logging.Logger
+	camera             camera.Camera
+	detector           vision.Service
+	detectorConfidence float64
+	classifier         vision.Service
+	classifierResults  int
+	mu                 sync.RWMutex
+	cancelCtx          context.Context
+	cancelFunc         func()
+	done               chan bool
 }
 
 func init() {
@@ -74,31 +72,22 @@ func newService(ctx context.Context, deps resource.Dependencies, conf resource.C
 }
 
 func (cfg *Config) Validate(path string) ([]string, error) {
-	if cfg.CameraName == "" {
+	if cfg.Camera == "" {
 		return nil, errors.New("source_camera is required")
 	}
-
-	if cfg.CropDetectorName == "" {
-		return nil, errors.New("crop_detector_name is required")
+	if cfg.Detector == "" {
+		return nil, errors.New("detector is required")
 	}
-
-	if cfg.CropDetectorLabel == "" {
-		return nil, errors.New("crop_detector_label is required")
+	if cfg.DetectorConfidence <= 0.0 {
+		return nil, errors.New("detector_confidence must be >= 0.0")
 	}
-
-	if cfg.CropDetectorConfidence <= 0.0 {
-		return nil, errors.New("crop_detector_confidence must be greater than 0.0")
+	if cfg.Classifier == "" {
+		return nil, errors.New("classifier_service is required")
 	}
-
-	if cfg.AgeClassifier == "" {
-		return nil, errors.New("age_classifier_name is required")
+	if cfg.ClassifierResults == 0 {
+		return nil, errors.New("classifier_results must be > 0")
 	}
-
-	if cfg.GenderClassifier == "" {
-		return nil, errors.New("gender_classifier_name is required")
-	}
-
-	return nil, nil
+	return []string{cfg.Camera, cfg.Detector, cfg.Classifier}, nil
 }
 
 // Reconfigure reconfigures with new settings.
@@ -106,118 +95,54 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	svc.mu.Lock()
 	defer svc.mu.Unlock()
 	svc.logger.Debugf("Reconfiguring %s", PrettyName)
-
 	// In case the module has changed name
 	svc.Named = conf.ResourceName().AsNamed()
-
 	newConf, err := resource.NativeConfig[*Config](conf)
 	if err != nil {
 		return err
 	}
-
 	// Get the camera
-	svc.cam, err = camera.FromDependencies(deps, newConf.CameraName)
+	svc.camera, err = camera.FromDependencies(deps, newConf.Camera)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get source camera %v for image sourcing...", newConf.CropDetectorName)
+		return errors.Wrapf(err, "unable to get source camera %v for image sourcing...", newConf.Detector)
 	}
-
 	// Get the face cropper
-	svc.croppingDetector, err = vision.FromDependencies(deps, newConf.CropDetectorName)
+	svc.detector, err = vision.FromDependencies(deps, newConf.Detector)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get Object Detector %v for image cropping...", newConf.CropDetectorName)
+		return errors.Wrapf(err, "unable to get Object Detector %v for image cropping...", newConf.Detector)
 	}
-
-	// Get the face cropper label
-	svc.cropLabel = newConf.CropDetectorLabel
-
-	// Get the face cropper threshold
-	svc.croppingThreshold = newConf.CropDetectorConfidence
-
+	// Get the detector confidence threshold
+	svc.detectorConfidence = newConf.DetectorConfidence
 	// Get the age detector
-	svc.ageClassifier, err = vision.FromDependencies(deps, newConf.AgeClassifier)
+	svc.classifier, err = vision.FromDependencies(deps, newConf.Classifier)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get classifier %v for age detection...", newConf.AgeClassifier)
+		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
 	}
-
-	// Get the gender detector
-	svc.genderClassifier, err = vision.FromDependencies(deps, newConf.GenderClassifier)
-	if err != nil {
-		return errors.Wrapf(err, "unable to get classifier %v for gender detection...", newConf.GenderClassifier)
-	}
+	svc.classifierResults = newConf.ClassifierResults
 	svc.logger.Debug("**** Reconfigured ****")
-
 	return nil
 }
 
-func (svc *myVisionSvc) Detections(ctx context.Context, img image.Image, extra map[string]interface{}) ([]objectdetection.Detection, error) {
-	svc.logger.Debug("**** Detections from Image... ****")
-	// First, get detections from the croppingDetector
-	detections, err := svc.croppingDetector.Detections(ctx, img, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var finalDetections []objectdetection.Detection
-	svc.logger.Debug("**** Detection checked ****")
-
-	for _, detection := range detections {
-		if detection.Label() == svc.cropLabel {
-			svc.logger.Debug("**** Label Match ****")
-			// Check if the detection score is above your threshold
-			if detection.Score() >= svc.croppingThreshold {
-				// Crop the image to the bounding box of the detection
-				croppedImg, err := cropImage(img, detection.BoundingBox())
-				if err != nil {
-					return nil, err
-				}
-
-				// Pass the cropped image to the age and gender detectors
-				ageClassification, err := svc.ageClassifier.Classifications(ctx, croppedImg, 1, nil)
-				if err != nil {
-					return nil, err
-				}
-				genderClassification, err := svc.genderClassifier.Classifications(ctx, croppedImg, 1, nil)
-				if err != nil {
-					return nil, err
-				}
-
-				// Assume that each detector returns exactly one detection
-				// Calculate the average score and create the label
-				if len(ageClassification) > 0 && len(genderClassification) > 0 {
-					avgScore := (ageClassification[0].Score() + genderClassification[0].Score()) / 2
-					label := genderClassification[0].Label() + ", " + ageClassification[0].Label()
-
-					finalDetections = append(finalDetections, NewDetection(detection.BoundingBox(), avgScore, label))
-
-					// Break out of the loop after processing the first detection that exceeds the score threshold
-				}
-				break
-			}
-		}
-	}
-
-	return finalDetections, nil
-}
-
-func (svc *myVisionSvc) DetectionsFromCamera(ctx context.Context, camera string, extra map[string]interface{}) ([]objectdetection.Detection, error) {
-	svc.logger.Debug("**** Detections from Camera... ****")
-
-	// gets the stream from a camera
-	stream, _ := svc.cam.Stream(context.Background())
-	// gets an image from the camera stream
-	img, release, _ := stream.Next(context.Background())
-	defer release()
-
-	return svc.Detections(ctx, img, nil)
-}
-
 // Classifications can be implemented to extend functionality but returns unimplemented currently.
-func (s *myVisionSvc) Classifications(ctx context.Context, img image.Image, n int, extra map[string]interface{}) (classification.Classifications, error) {
-	return nil, errUnimplemented
+func (svc *myVisionSvc) Classifications(ctx context.Context, img image.Image, n int, extra map[string]interface{}) (classification.Classifications, error) {
+	return svc.detectAndClassify(ctx, img)
 }
 
 // ClassificationsFromCamera can be implemented to extend functionality but returns unimplemented currently.
-func (s *myVisionSvc) ClassificationsFromCamera(context.Context, string, int, map[string]interface{}) (classification.Classifications, error) {
+func (svc *myVisionSvc) ClassificationsFromCamera(ctx context.Context, cameraName string, n int, extra map[string]interface{}) (classification.Classifications, error) {
+	// gets the stream from a camera
+	stream, _ := svc.camera.Stream(context.Background())
+	// gets an image from the camera stream
+	img, release, _ := stream.Next(context.Background())
+	defer release()
+	return svc.detectAndClassify(ctx, img)
+}
+
+func (svc *myVisionSvc) Detections(ctx context.Context, img image.Image, extra map[string]interface{}) ([]objectdetection.Detection, error) {
+	return nil, errUnimplemented
+}
+
+func (svc *myVisionSvc) DetectionsFromCamera(ctx context.Context, camera string, extra map[string]interface{}) ([]objectdetection.Detection, error) {
 	return nil, errUnimplemented
 }
 
@@ -232,8 +157,8 @@ func (s *myVisionSvc) DoCommand(ctx context.Context, cmd map[string]interface{})
 }
 
 // The close method is executed when the component is shut down
-func (s *myVisionSvc) Close(ctx context.Context) error {
-	s.logger.Debugf("Shutting down %s", PrettyName)
+func (svc *myVisionSvc) Close(ctx context.Context) error {
+	svc.logger.Debugf("Shutting down %s", PrettyName)
 	return nil
 }
 
@@ -245,28 +170,31 @@ func cropImage(img image.Image, rect *image.Rectangle) (image.Image, error) {
 	return cropped, nil
 }
 
-type SimpleDetection struct {
-	bbox  *image.Rectangle
-	score float64
-	label string
-}
-
-func (d SimpleDetection) BoundingBox() *image.Rectangle {
-	return d.bbox
-}
-
-func (d SimpleDetection) Score() float64 {
-	return d.score
-}
-
-func (d SimpleDetection) Label() string {
-	return d.label
-}
-
-func NewDetection(bbox *image.Rectangle, score float64, label string) objectdetection.Detection {
-	return SimpleDetection{
-		bbox:  bbox,
-		score: score,
-		label: label,
+// Take an input image, detect objects, crop the image down to the detected bounding box and
+// hand over to classifier for more accurate classifications
+func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) (classification.Classifications, error) {
+	// Get detections from the provided Image
+	detections, err := svc.detector.Detections(ctx, img, nil)
+	if err != nil {
+		return nil, err
 	}
+	// Result set to be returned
+	var classificationResult classification.Classifications
+	for _, detection := range detections {
+		// Check if the detection score is above the configured threshold
+		if detection.Score() >= svc.detectorConfidence {
+			// Crop the image to the bounding box of the detection
+			croppedImg, err := cropImage(img, detection.BoundingBox())
+			if err != nil {
+				return nil, err
+			}
+			// Pass the cropped image to the classifier and get the classification with the highest confidence
+			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.classifierResults, nil)
+			if err != nil {
+				return nil, err
+			}
+			classificationResult = append(classificationResult, classification...)
+		}
+	}
+	return classificationResult, nil
 }
