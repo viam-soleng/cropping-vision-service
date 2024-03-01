@@ -1,9 +1,14 @@
 package visionsvc
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"image"
 	"image/draw"
+	"image/jpeg"
+	"os"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -27,6 +32,8 @@ type Config struct {
 	DetectorConfidence float64 `json:"detector_confidence"`
 	Classifier         string  `json:"classifier_service"`
 	ClassifierResults  int     `json:"classifier_results"`
+	LogImage           bool    `json:"log_image"`
+	ImagePath          string  `json:"image_path"`
 }
 
 type myVisionSvc struct {
@@ -37,6 +44,8 @@ type myVisionSvc struct {
 	detectorConfidence float64
 	classifier         vision.Service
 	classifierResults  int
+	logImage           bool
+	imagePath          string
 	mu                 sync.RWMutex
 	cancelCtx          context.Context
 	cancelFunc         func()
@@ -118,6 +127,9 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	if err != nil {
 		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
 	}
+
+	svc.logImage = newConf.LogImage
+	svc.imagePath = newConf.ImagePath
 	svc.classifierResults = newConf.ClassifierResults
 	svc.logger.Debug("**** Reconfigured ****")
 	return nil
@@ -162,12 +174,40 @@ func (svc *myVisionSvc) Close(ctx context.Context) error {
 	return nil
 }
 
-func cropImage(img image.Image, rect *image.Rectangle) (image.Image, error) {
+func cropImage(img image.Image, rect *image.Rectangle, logImage bool, imagePath string) (image.Image, error) {
 	// The cropping operation is done by creating a new image of the size of the rectangle
 	// and drawing the relevant part of the original image onto the new image.
 	cropped := image.NewRGBA(rect.Bounds())
 	draw.Draw(cropped, rect.Bounds(), img, rect.Min, draw.Src)
+	// Set to true if you want to save cropped images to disk
+	if logImage {
+		err := saveImage(cropped, imagePath)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return cropped, nil
+}
+
+func saveImage(image *image.RGBA, imagePath string) error {
+	buf := new(bytes.Buffer)
+	err := jpeg.Encode(buf, image, nil)
+	if err != nil {
+		return err
+	}
+	hash := sha256.New()
+	hash.Write(buf.Bytes())
+	fileName := hash.Sum(nil)
+	f, err := os.Create(fmt.Sprintf("%v/%x.jpg", imagePath, fileName))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	opt := jpeg.Options{
+		Quality: 90,
+	}
+	jpeg.Encode(f, image, &opt)
+	return nil
 }
 
 // Take an input image, detect objects, crop the image down to the detected bounding box and
@@ -184,7 +224,7 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 		// Check if the detection score is above the configured threshold
 		if detection.Score() >= svc.detectorConfidence {
 			// Crop the image to the bounding box of the detection
-			croppedImg, err := cropImage(img, detection.BoundingBox())
+			croppedImg, err := cropImage(img, detection.BoundingBox(), svc.logImage, svc.imagePath)
 			if err != nil {
 				return nil, err
 			}
