@@ -6,6 +6,8 @@ This repository contains the `visionsvc` package, a module of the Viam vision se
 
 The Viam Cropping Vision Service (`visionsvc`) is a specialized module within the Viam vision framework. Its primary function is to crop an image to an initial detection and then utilize other models to return detailed detections, including age and gender classifications.
 
+![alt text](media/architecture.png "Cropping Service Architecture")
+
 ## Features
 
 - Accept a "Cropping" Object Detector.
