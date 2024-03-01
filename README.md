@@ -14,7 +14,7 @@ The Viam Cropping Vision Service (`visionsvc`) is a specialized module within th
 - Uses an object detector to identify the objects bounding boxes
 - Crops the detected images according to their bounding boxes
 - Feeds the cropped images into the configured classifier for more accurate results
-- Returns the 
+- Returns the classification labels and score
 - Use the bounding box from the Cropping Object Detector to specific the bounding box to run classification against.
 - Run age classifier.
 - Run gender classifier.
