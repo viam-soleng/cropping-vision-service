@@ -195,10 +195,10 @@ func saveImage(image *image.RGBA, imagePath string) error {
 	if err != nil {
 		return err
 	}
-	hash := sha256.New()
-	hash.Write(buf.Bytes())
-	fileName := hash.Sum(nil)
-	f, err := os.Create(fmt.Sprintf("%v/%x.jpg", imagePath, fileName))
+	digest := sha256.New()
+	digest.Write(buf.Bytes())
+	hash := digest.Sum(nil)
+	f, err := os.Create(fmt.Sprintf("%v/%x.jpg", imagePath, hash))
 	if err != nil {
 		return err
 	}
