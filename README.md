@@ -28,6 +28,7 @@ Sample Attributes:
   "camera": "camera",
   "detector_service": "detector",
   "detector_confidence": 0.5,
+  "detector_detections": 5,
   "detector_valid_labels": [
     "label"
   ],

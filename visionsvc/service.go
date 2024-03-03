@@ -10,6 +10,7 @@ import (
 	"image/jpeg"
 	"os"
 	"slices"
+	"sort"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -31,6 +32,7 @@ type Config struct {
 	Camera              string   `json:"camera"`
 	Detector            string   `json:"detector_service"`
 	DetectorConfidence  float64  `json:"detector_confidence"`
+	DetectorDetections  int      `json:"detector_detections"`
 	DetectorValidLabels []string `json:"detector_valid_labels"`
 	Classifier          string   `json:"classifier_service"`
 	ClassifierResults   int      `json:"classifier_results"`
@@ -40,19 +42,20 @@ type Config struct {
 
 type myVisionSvc struct {
 	resource.Named
-	logger              logging.Logger
-	camera              camera.Camera
-	detector            vision.Service
-	detectorConfidence  float64
-	detectorValidLabels []string
-	classifier          vision.Service
-	classifierResults   int
-	logImage            bool
-	imagePath           string
-	mu                  sync.RWMutex
-	cancelCtx           context.Context
-	cancelFunc          func()
-	done                chan bool
+	logger                logging.Logger
+	camera                camera.Camera
+	detector              vision.Service
+	detectorConfidence    float64
+	detectorMaxDetections int
+	detectorValidLabels   []string
+	classifier            vision.Service
+	classifierResults     int
+	logImage              bool
+	imagePath             string
+	mu                    sync.RWMutex
+	cancelCtx             context.Context
+	cancelFunc            func()
+	done                  chan bool
 }
 
 func init() {
@@ -130,7 +133,7 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	if err != nil {
 		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
 	}
-
+	svc.detectorMaxDetections = newConf.DetectorDetections
 	svc.detectorValidLabels = newConf.DetectorValidLabels
 	svc.logImage = newConf.LogImage
 	svc.imagePath = newConf.ImagePath
@@ -222,6 +225,15 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	if err != nil {
 		return nil, err
 	}
+	// sort detections based upon score
+	sort.Slice(detections, func(i, j int) bool {
+		return detections[i].Score() > detections[j].Score()
+	})
+	// trim detections based upon max detections setting / if detectorMaxDetections = 0 -> no limit
+	if len(detections) > svc.detectorMaxDetections && svc.detectorMaxDetections != 0 {
+		detections = detections[:svc.detectorMaxDetections]
+	}
+	svc.logger.Infof("List of n detections (%v) sorted and trimmed: %v", svc.detectorMaxDetections, detections)
 	// Result set to be returned
 	var classificationResult classification.Classifications
 	for _, detection := range detections {
