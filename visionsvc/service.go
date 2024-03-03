@@ -9,6 +9,7 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/pkg/errors"
@@ -27,29 +28,31 @@ var PrettyName = "Viam cropping vision service"
 var Description = "A module of the Viam vision service that crops an image to an initial detection then runs other models to return detections"
 
 type Config struct {
-	Camera             string  `json:"camera"`
-	Detector           string  `json:"detector_service"`
-	DetectorConfidence float64 `json:"detector_confidence"`
-	Classifier         string  `json:"classifier_service"`
-	ClassifierResults  int     `json:"classifier_results"`
-	LogImage           bool    `json:"log_image"`
-	ImagePath          string  `json:"image_path"`
+	Camera              string   `json:"camera"`
+	Detector            string   `json:"detector_service"`
+	DetectorConfidence  float64  `json:"detector_confidence"`
+	DetectorValidLabels []string `json:"detector_valid_labels"`
+	Classifier          string   `json:"classifier_service"`
+	ClassifierResults   int      `json:"classifier_results"`
+	LogImage            bool     `json:"log_image"`
+	ImagePath           string   `json:"image_path"`
 }
 
 type myVisionSvc struct {
 	resource.Named
-	logger             logging.Logger
-	camera             camera.Camera
-	detector           vision.Service
-	detectorConfidence float64
-	classifier         vision.Service
-	classifierResults  int
-	logImage           bool
-	imagePath          string
-	mu                 sync.RWMutex
-	cancelCtx          context.Context
-	cancelFunc         func()
-	done               chan bool
+	logger              logging.Logger
+	camera              camera.Camera
+	detector            vision.Service
+	detectorConfidence  float64
+	detectorValidLabels []string
+	classifier          vision.Service
+	classifierResults   int
+	logImage            bool
+	imagePath           string
+	mu                  sync.RWMutex
+	cancelCtx           context.Context
+	cancelFunc          func()
+	done                chan bool
 }
 
 func init() {
@@ -122,12 +125,13 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	}
 	// Get the detector confidence threshold
 	svc.detectorConfidence = newConf.DetectorConfidence
-	// Get the age detector
+	// Get the detector dependency
 	svc.classifier, err = vision.FromDependencies(deps, newConf.Classifier)
 	if err != nil {
 		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
 	}
 
+	svc.detectorValidLabels = newConf.DetectorValidLabels
 	svc.logImage = newConf.LogImage
 	svc.imagePath = newConf.ImagePath
 	svc.classifierResults = newConf.ClassifierResults
@@ -222,7 +226,7 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	var classificationResult classification.Classifications
 	for _, detection := range detections {
 		// Check if the detection score is above the configured threshold
-		if detection.Score() >= svc.detectorConfidence {
+		if detection.Score() >= svc.detectorConfidence && slices.Contains(svc.detectorValidLabels, detection.Label()) {
 			// Crop the image to the bounding box of the detection
 			croppedImg, err := cropImage(img, detection.BoundingBox(), svc.logImage, svc.imagePath)
 			if err != nil {

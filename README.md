@@ -25,9 +25,12 @@ The Viam Cropping Vision Service (`visionsvc`) is a specialized module within th
 Sample Attributes:
 ```json
 {
-  "camera": "image",
+  "camera": "camera",
   "detector_service": "detector",
   "detector_confidence": 0.5,
+  "detector_valid_labels": [
+    "label"
+  ],
   "classifier_service": "classifier",
   "classifier_results": 1,
   "log_image": false,             //Optional
