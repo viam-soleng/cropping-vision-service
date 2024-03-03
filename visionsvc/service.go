@@ -150,9 +150,15 @@ func (svc *myVisionSvc) Classifications(ctx context.Context, img image.Image, n 
 // ClassificationsFromCamera can be implemented to extend functionality but returns unimplemented currently.
 func (svc *myVisionSvc) ClassificationsFromCamera(ctx context.Context, cameraName string, n int, extra map[string]interface{}) (classification.Classifications, error) {
 	// gets the stream from a camera
-	stream, _ := svc.camera.Stream(context.Background())
+	stream, err := svc.camera.Stream(context.Background())
+	if err != nil {
+		return nil, err
+	}
 	// gets an image from the camera stream
-	img, release, _ := stream.Next(context.Background())
+	img, release, err := stream.Next(context.Background())
+	if err != nil {
+		return nil, err
+	}
 	defer release()
 	return svc.detectAndClassify(ctx, img)
 }
@@ -178,6 +184,7 @@ func (s *myVisionSvc) DoCommand(ctx context.Context, cmd map[string]interface{})
 // The close method is executed when the component is shut down
 func (svc *myVisionSvc) Close(ctx context.Context) error {
 	svc.logger.Debugf("Shutting down %s", PrettyName)
+	svc.camera.Close(ctx)
 	return nil
 }
 
