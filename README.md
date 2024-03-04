@@ -15,14 +15,12 @@ The Viam Cropping Vision Service (`visionsvc`) is a specialized module within th
 - Crops the detected images according to their bounding boxes
 - Feeds the cropped images into the configured classifier for more accurate results
 - Returns the classification labels and score
-- Use the bounding box from the Cropping Object Detector to specific the bounding box to run classification against.
-- Run age classifier.
-- Run gender classifier.
-- Return a single object detection.
 
-## Configuration
+## Configuration and Dependencies
 
-Sample Attributes:
+Dependencies are implicit.
+
+Sample Configuration Attributes:
 ```json
 {
   "camera": "camera",
@@ -37,4 +35,28 @@ Sample Attributes:
   "log_image": false,             //Optional
   "image_path": "<- YOUR PATH ->" //Optional
 }
+```
+
+Sample Component Configuration:
+```json
+{
+      "model": "sol-eng:vision:cropping-service",
+      "depends_on": [
+        "camera",
+        "age-vision",
+        "gender-vision",
+        "person-vision"
+      ],
+      "attributes": {
+        "crop_detector_name": "person-vision",
+        "crop_detector_confidence": 0.7,
+        "crop_detector_label": "0",
+        "age_classifier_name": "age-vision",
+        "gender_classifier_name": "gender-vision",
+        "source_camera": "camera"
+      },
+      "name": "crop-person-service",
+      "type": "vision",
+      "namespace": "rdk"
+    }
 ```
