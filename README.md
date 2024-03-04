@@ -2,7 +2,7 @@
 
 This repository contains the `visionsvc` package, a module of the Viam vision service designed for image cropping and further analysis. It integrates several vision services, including object detection, age classification, and gender classification.
 
-Available via the [Viam Registry](https://app.viam.com/module/viam-soleng/viam-cropping-vision-service)! -> Currently for darwin/arm64 and android/arm64 others will follow soon.
+Available via the [Viam Registry](https://app.viam.com/module/viam-soleng/detect-and-classify)! -> Currently for darwin/arm64 and android/arm64 others will follow soon.
 
 ## Description
 
