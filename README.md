@@ -1,12 +1,12 @@
-# Viam Cropping Vision Service
+# Viam Detect and Classify Vision Service
 
 This repository contains the `visionsvc` package, a module of the Viam vision service designed for image cropping and further analysis. It integrates several vision services, including object detection, age classification, and gender classification.
 
 ## Description
 
-The Viam Cropping Vision Service (`visionsvc`) is a specialized module within the Viam vision framework. Its primary function is to crop an image to an initial detection and then utilize other models to return detailed detections, including age and gender classifications.
+The Viam Detect and Classify Vision Service (`visionsvc`) is a specialized module within the Viam vision framework. Its primary function is to crop an image to an initial detection and then utilize a classifier model to return accurate classifications such as detect a face and classify age and gender.
 
-![alt text](media/architecture.png "Cropping Service Architecture")
+![alt text](media/architecture.png "Detect and Classify Service Architecture")
 
 ## Features
 
@@ -40,22 +40,22 @@ Sample Configuration Attributes:
 Sample Component Configuration:
 ```json
     {
-      "model": "sol-eng:vision:cropping-service",
+      "name": "detect-and-classify",
+      "type": "vision",
+      "namespace": "rdk",
+      "model": "viam-soleng:vision:detect-and-classify",
       "attributes": {
         "classifier_service": "vision-age",
-        "detector_service": "vision-face",
-        "camera": "cam",
-        "detector_confidence": 0.7,
         "detector_detections": 5,
-        "log_image": false,
-        "image_path": "/Users/Username/faces/",
+        "image_path": "/Users/username/faces/",
+        "detector_confidence": 0.7,
         "detector_valid_labels": [
           "face"
         ],
-        "classifier_results": 1
-      },
-      "name": "cropping",
-      "type": "vision",
-      "namespace": "rdk"
+        "camera": "cam",
+        "detector_service": "vision-face",
+        "classifier_results": 1,
+        "log_image": true
+      }
     }
 ```

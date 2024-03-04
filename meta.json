@@ -1,0 +1,13 @@
+{
+  "module_id": "viam-soleng:detect-and-classify",
+  "visibility": "public",
+  "url": "https://github.com/viam-soleng/detect-and-classify",
+  "description": "This module uses an object detection ML model as input, crops the detected objects according to their bounding boxes and runs the cropped images through a classifier model for more accurate results.",
+  "models": [
+    {
+      "api": "rdk:service:vision",
+      "model": "viam-soleng:vision:detect-and-classify"
+    }
+  ],
+  "entrypoint": "./bin/detect-and-classify"
+}

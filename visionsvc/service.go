@@ -24,8 +24,8 @@ import (
 )
 
 var errUnimplemented = errors.New("unimplemented")
-var Model = resource.NewModel("sol-eng", "vision", "cropping-service")
-var PrettyName = "Viam cropping vision service"
+var Model = resource.NewModel("viam-soleng", "vision", "detect-and-classify")
+var PrettyName = "Viam detect and classify vision service"
 var Description = "A module of the Viam vision service that crops an image to an initial detection then runs other models to return detections"
 
 type Config struct {
@@ -88,7 +88,7 @@ func newService(ctx context.Context, deps resource.Dependencies, conf resource.C
 
 func (cfg *Config) Validate(path string) ([]string, error) {
 	if cfg.Camera == "" {
-		return nil, errors.New("source_camera is required")
+		return nil, errors.New("camera is required")
 	}
 	if cfg.Detector == "" {
 		return nil, errors.New("detector is required")
