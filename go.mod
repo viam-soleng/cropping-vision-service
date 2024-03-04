@@ -1,4 +1,4 @@
-module github.com/viam-soleng/viam-cropping-vision-service
+module github.com/viam-soleng/detect-and-classify
 
 go 1.21
 

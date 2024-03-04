@@ -32,30 +32,30 @@ type Config struct {
 	Camera              string   `json:"camera"`
 	Detector            string   `json:"detector_service"`
 	DetectorConfidence  float64  `json:"detector_confidence"`
-	DetectorDetections  int      `json:"detector_detections"`
+	MaxDetections       int      `json:"max_detections"`
 	DetectorValidLabels []string `json:"detector_valid_labels"`
 	Classifier          string   `json:"classifier_service"`
-	ClassifierResults   int      `json:"classifier_results"`
+	MaxClassifications  int      `json:"max_classifications"`
 	LogImage            bool     `json:"log_image"`
 	ImagePath           string   `json:"image_path"`
 }
 
 type myVisionSvc struct {
 	resource.Named
-	logger                logging.Logger
-	camera                camera.Camera
-	detector              vision.Service
-	detectorConfidence    float64
-	detectorMaxDetections int
-	detectorValidLabels   []string
-	classifier            vision.Service
-	classifierResults     int
-	logImage              bool
-	imagePath             string
-	mu                    sync.RWMutex
-	cancelCtx             context.Context
-	cancelFunc            func()
-	done                  chan bool
+	logger              logging.Logger
+	camera              camera.Camera
+	detector            vision.Service
+	detectorConfidence  float64
+	maxDetections       int
+	detectorValidLabels []string
+	classifier          vision.Service
+	maxClassifications  int
+	logImage            bool
+	imagePath           string
+	mu                  sync.RWMutex
+	cancelCtx           context.Context
+	cancelFunc          func()
+	done                chan bool
 }
 
 func init() {
@@ -99,7 +99,7 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 	if cfg.Classifier == "" {
 		return nil, errors.New("classifier_service is required")
 	}
-	if cfg.ClassifierResults == 0 {
+	if cfg.MaxClassifications == 0 {
 		return nil, errors.New("classifier_results must be > 0")
 	}
 	return []string{cfg.Camera, cfg.Detector, cfg.Classifier}, nil
@@ -133,11 +133,11 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	if err != nil {
 		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
 	}
-	svc.detectorMaxDetections = newConf.DetectorDetections
+	svc.maxDetections = newConf.MaxDetections
 	svc.detectorValidLabels = newConf.DetectorValidLabels
 	svc.logImage = newConf.LogImage
 	svc.imagePath = newConf.ImagePath
-	svc.classifierResults = newConf.ClassifierResults
+	svc.maxClassifications = newConf.MaxClassifications
 	svc.logger.Debug("**** Reconfigured ****")
 	return nil
 }
@@ -237,10 +237,11 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 		return detections[i].Score() > detections[j].Score()
 	})
 	// trim detections based upon max detections setting / if detectorMaxDetections = 0 -> no limit
-	if len(detections) > svc.detectorMaxDetections && svc.detectorMaxDetections != 0 {
-		detections = detections[:svc.detectorMaxDetections]
+	if len(detections) > svc.maxDetections && svc.maxDetections != 0 {
+		detections = detections[:svc.maxDetections]
 	}
-	svc.logger.Infof("List of n detections (%v) sorted and trimmed: %v", svc.detectorMaxDetections, detections)
+	svc.logger.Infof("# Detections: %v/%v", len(detections), svc.maxDetections)
+	svc.logger.Debugf("Detection Details: %v", detections)
 	// Result set to be returned
 	var classificationResult classification.Classifications
 	for _, detection := range detections {
@@ -252,12 +253,18 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 				return nil, err
 			}
 			// Pass the cropped image to the classifier and get the classification with the highest confidence
-			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.classifierResults, nil)
+			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
 			if err != nil {
 				return nil, err
 			}
 			classificationResult = append(classificationResult, classification...)
 		}
+	}
+	sort.Slice(classificationResult, func(i, j int) bool {
+		return classificationResult[i].Score() > classificationResult[j].Score()
+	})
+	if len(classificationResult) > svc.maxClassifications && svc.maxClassifications != 0 {
+		classificationResult = classificationResult[:svc.maxClassifications]
 	}
 	return classificationResult, nil
 }
