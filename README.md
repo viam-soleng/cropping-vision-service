@@ -39,7 +39,7 @@ Sample Configuration Attributes:
 }
 ```
 
-Sample Component Configuration:
+Sample Service Configuration:
 ```json
     {
       "name": "detect-and-classify",
@@ -57,7 +57,7 @@ Sample Component Configuration:
         "camera": "cam",
         "detector_service": "vision-face",
         "classifier_results": 1,
-        "log_image": true
+        "log_image": false
       }
     }
 ```
