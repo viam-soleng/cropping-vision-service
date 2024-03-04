@@ -39,23 +39,22 @@ Sample Configuration Attributes:
 
 Sample Component Configuration:
 ```json
-{
+    {
       "model": "sol-eng:vision:cropping-service",
-      "depends_on": [
-        "camera",
-        "age-vision",
-        "gender-vision",
-        "person-vision"
-      ],
       "attributes": {
-        "crop_detector_name": "person-vision",
-        "crop_detector_confidence": 0.7,
-        "crop_detector_label": "0",
-        "age_classifier_name": "age-vision",
-        "gender_classifier_name": "gender-vision",
-        "source_camera": "camera"
+        "classifier_service": "vision-age",
+        "detector_service": "vision-face",
+        "camera": "cam",
+        "detector_confidence": 0.7,
+        "detector_detections": 5,
+        "log_image": false,
+        "image_path": "/Users/Username/faces/",
+        "detector_valid_labels": [
+          "face"
+        ],
+        "classifier_results": 1
       },
-      "name": "crop-person-service",
+      "name": "cropping",
       "type": "vision",
       "namespace": "rdk"
     }
