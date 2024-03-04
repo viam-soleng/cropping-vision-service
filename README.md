@@ -2,6 +2,8 @@
 
 This repository contains the `visionsvc` package, a module of the Viam vision service designed for image cropping and further analysis. It integrates several vision services, including object detection, age classification, and gender classification.
 
+Available via the Viam Registry! -> Currently for darwin/arm64 others will follow soon.
+
 ## Description
 
 The Viam Detect and Classify Vision Service (`visionsvc`) is a specialized module within the Viam vision framework. Its primary function is to crop an image to an initial detection and then utilize a classifier model to return accurate classifications such as detect a face and classify age and gender.
