@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	utils.ContextualMain(mainWithArgs, module.NewLoggerFromArgs("My Go Sensor Module"))
+	utils.ContextualMain(mainWithArgs, module.NewLoggerFromArgs("Module: Detect and Classify"))
 }
 
 func mainWithArgs(ctx context.Context, args []string, logger logging.Logger) (err error) {
