@@ -20,7 +20,7 @@ CGO_CFLAGS := -I$(NDK_ROOT)/toolchains/llvm/prebuilt/$(HOST_OS)-x86_64/sysroot/u
               -I$(NDK_ROOT)/toolchains/llvm/prebuilt/$(HOST_OS)-x86_64/sysroot/usr/include/$(CC_ARCH)-linux-android
 CGO_LDFLAGS := -L$(NDK_ROOT)/toolchains/llvm/prebuilt/$(HOST_OS)-x86_64/sysroot/usr/lib
 OUTPUT_DIR := bin
-OUTPUT_NAME := droidcamera-android-$(CC_ARCH)
+OUTPUT_NAME := detect-and-classify #-$(CC_ARCH)
 OUTPUT := $(OUTPUT_DIR)/$(OUTPUT_NAME)
 
 ASSET_PATH := $(APP_ROOT)/app/src/main/assets/$(OUTPUT_NAME)
