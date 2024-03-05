@@ -34,6 +34,7 @@ type Config struct {
 	DetectorConfidence  float64  `json:"detector_confidence"`
 	MaxDetections       int      `json:"max_detections"`
 	DetectorValidLabels []string `json:"detector_valid_labels"`
+	DetBorder           int      `json:"border"`
 	Classifier          string   `json:"classifier_service"`
 	MaxClassifications  int      `json:"max_classifications"`
 	LogImage            bool     `json:"log_image"`
@@ -48,6 +49,7 @@ type myVisionSvc struct {
 	detectorConfidence  float64
 	maxDetections       int
 	detectorValidLabels []string
+	detBorder           int
 	classifier          vision.Service
 	maxClassifications  int
 	logImage            bool
@@ -133,6 +135,7 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	if err != nil {
 		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
 	}
+	svc.detBorder = newConf.DetBorder
 	svc.maxDetections = newConf.MaxDetections
 	svc.detectorValidLabels = newConf.DetectorValidLabels
 	svc.logImage = newConf.LogImage
@@ -211,8 +214,13 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	for _, detection := range detections {
 		// Check if the detection score is above the configured threshold
 		if detection.Score() >= svc.detectorConfidence && slices.Contains(svc.detectorValidLabels, detection.Label()) {
-			// Crop the image to the bounding box of the detection
-			croppedImg, err := cropImage(img, detection.BoundingBox())
+			// Increase/decrease bounding box according to detection border setting
+			rectangle := image.Rect(
+				detection.BoundingBox().Min.X-svc.detBorder,
+				detection.BoundingBox().Min.Y-svc.detBorder,
+				detection.BoundingBox().Max.X+svc.detBorder,
+				detection.BoundingBox().Max.Y+svc.detBorder)
+			croppedImg, err := cropImage(img, &rectangle)
 			if err != nil {
 				return nil, err
 			}

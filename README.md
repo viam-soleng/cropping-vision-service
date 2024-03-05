@@ -32,6 +32,7 @@ Sample Configuration Attributes:
   "detector_valid_labels": [
     "label"
   ],
+  "border": 30,
   "classifier_service": "classifier",
   "max_classifications": 5,
   "log_image": false,             //Optional
@@ -51,6 +52,7 @@ Sample Service Configuration:
         "max_detections": 5,
         "image_path": "/Users/username/faces/",
         "detector_confidence": 0.7,
+        "border": 30,
         "detector_valid_labels": [
           "face"
         ],
