@@ -34,7 +34,7 @@ Sample Configuration Attributes:
   ],
   "border": 30,
   "classifier_service": "classifier",
-  "max_classifications": 5,
+  "max_classifications": 3,
   "log_image": false,             //Optional
   "image_path": "<- YOUR PATH ->" //Optional
 }
@@ -58,7 +58,7 @@ Sample Service Configuration:
         ],
         "camera": "cam",
         "detector_service": "vision-face",
-        "max_classifications": 5,
+        "max_classifications": 3,
         "log_image": false
       }
     }
