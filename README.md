@@ -28,12 +28,13 @@ Sample Configuration Attributes:
   "camera": "camera",
   "detector_service": "detector",
   "detector_confidence": 0.5,
-  "detector_detections": 5,
+  "max_detections": 5,
   "detector_valid_labels": [
     "label"
   ],
+  "border": 30,
   "classifier_service": "classifier",
-  "classifier_results": 1,
+  "max_classifications": 5,
   "log_image": false,             //Optional
   "image_path": "<- YOUR PATH ->" //Optional
 }
@@ -48,15 +49,16 @@ Sample Service Configuration:
       "model": "viam-soleng:vision:detect-and-classify",
       "attributes": {
         "classifier_service": "vision-age",
-        "detector_detections": 5,
+        "max_detections": 5,
         "image_path": "/Users/username/faces/",
         "detector_confidence": 0.7,
+        "border": 30,
         "detector_valid_labels": [
           "face"
         ],
         "camera": "cam",
         "detector_service": "vision-face",
-        "classifier_results": 1,
+        "max_classifications": 5,
         "log_image": false
       }
     }

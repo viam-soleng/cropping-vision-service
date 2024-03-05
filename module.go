@@ -8,7 +8,7 @@ import (
 	"go.viam.com/rdk/services/vision"
 	"go.viam.com/utils"
 
-	visionsvc "github.com/viam-soleng/viam-cropping-vision-service/visionsvc"
+	visionsvc "github.com/viam-soleng/detect-and-classify/visionsvc"
 )
 
 func main() {
