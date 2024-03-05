@@ -232,7 +232,7 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 				}
 			}
 			// Pass the cropped image to the classifier and get the classification with the highest confidence
-			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
+			classification, err := svc.classifier.Classifications(ctx, croppedImg, 0, nil)
 			if err != nil {
 				return nil, err
 			}
