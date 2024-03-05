@@ -188,22 +188,67 @@ func (svc *myVisionSvc) Close(ctx context.Context) error {
 	return nil
 }
 
-func cropImage(img image.Image, rect *image.Rectangle, logImage bool, imagePath string) (image.Image, error) {
+// Take an input image, detect objects, crop the image down to the detected bounding box and
+// hand over to classifier for more accurate classifications
+func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) (classification.Classifications, error) {
+	// Get detections from the provided Image
+	detections, err := svc.detector.Detections(ctx, img, nil)
+	if err != nil {
+		return nil, err
+	}
+	// sort detections based upon score
+	sort.Slice(detections, func(i, j int) bool {
+		return detections[i].Score() > detections[j].Score()
+	})
+	// trim detections based upon max detections setting / if detectorMaxDetections = 0 -> no limit
+	if len(detections) > svc.maxDetections && svc.maxDetections != 0 {
+		detections = detections[:svc.maxDetections]
+	}
+	svc.logger.Infof("Detections #: %v/%v", len(detections), svc.maxDetections)
+	svc.logger.Debugf("Detections Details: %v", detections)
+	// Result set to be returned
+	var classificationResult classification.Classifications
+	for _, detection := range detections {
+		// Check if the detection score is above the configured threshold
+		if detection.Score() >= svc.detectorConfidence && slices.Contains(svc.detectorValidLabels, detection.Label()) {
+			// Crop the image to the bounding box of the detection
+			croppedImg, err := cropImage(img, detection.BoundingBox())
+			if err != nil {
+				return nil, err
+			}
+			// Save cropped images to disk
+			if svc.logImage {
+				err := saveImage(croppedImg, svc.imagePath)
+				if err != nil {
+					return nil, err
+				}
+			}
+			// Pass the cropped image to the classifier and get the classification with the highest confidence
+			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
+			if err != nil {
+				return nil, err
+			}
+			classificationResult = append(classificationResult, classification...)
+		}
+	}
+	sort.Slice(classificationResult, func(i, j int) bool {
+		return classificationResult[i].Score() > classificationResult[j].Score()
+	})
+	if len(classificationResult) > svc.maxClassifications && svc.maxClassifications != 0 {
+		classificationResult = classificationResult[:svc.maxClassifications]
+	}
+	return classificationResult, nil
+}
+
+func cropImage(img image.Image, rect *image.Rectangle) (image.Image, error) {
 	// The cropping operation is done by creating a new image of the size of the rectangle
 	// and drawing the relevant part of the original image onto the new image.
 	cropped := image.NewRGBA(rect.Bounds())
 	draw.Draw(cropped, rect.Bounds(), img, rect.Min, draw.Src)
-	// Set to true if you want to save cropped images to disk
-	if logImage {
-		err := saveImage(cropped, imagePath)
-		if err != nil {
-			return nil, err
-		}
-	}
 	return cropped, nil
 }
 
-func saveImage(image *image.RGBA, imagePath string) error {
+func saveImage(image image.Image, imagePath string) error {
 	buf := new(bytes.Buffer)
 	err := jpeg.Encode(buf, image, nil)
 	if err != nil {
@@ -222,49 +267,4 @@ func saveImage(image *image.RGBA, imagePath string) error {
 	}
 	jpeg.Encode(f, image, &opt)
 	return nil
-}
-
-// Take an input image, detect objects, crop the image down to the detected bounding box and
-// hand over to classifier for more accurate classifications
-func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) (classification.Classifications, error) {
-	// Get detections from the provided Image
-	detections, err := svc.detector.Detections(ctx, img, nil)
-	if err != nil {
-		return nil, err
-	}
-	// sort detections based upon score
-	sort.Slice(detections, func(i, j int) bool {
-		return detections[i].Score() > detections[j].Score()
-	})
-	// trim detections based upon max detections setting / if detectorMaxDetections = 0 -> no limit
-	if len(detections) > svc.maxDetections && svc.maxDetections != 0 {
-		detections = detections[:svc.maxDetections]
-	}
-	svc.logger.Infof("# Detections: %v/%v", len(detections), svc.maxDetections)
-	svc.logger.Debugf("Detection Details: %v", detections)
-	// Result set to be returned
-	var classificationResult classification.Classifications
-	for _, detection := range detections {
-		// Check if the detection score is above the configured threshold
-		if detection.Score() >= svc.detectorConfidence && slices.Contains(svc.detectorValidLabels, detection.Label()) {
-			// Crop the image to the bounding box of the detection
-			croppedImg, err := cropImage(img, detection.BoundingBox(), svc.logImage, svc.imagePath)
-			if err != nil {
-				return nil, err
-			}
-			// Pass the cropped image to the classifier and get the classification with the highest confidence
-			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
-			if err != nil {
-				return nil, err
-			}
-			classificationResult = append(classificationResult, classification...)
-		}
-	}
-	sort.Slice(classificationResult, func(i, j int) bool {
-		return classificationResult[i].Score() > classificationResult[j].Score()
-	})
-	if len(classificationResult) > svc.maxClassifications && svc.maxClassifications != 0 {
-		classificationResult = classificationResult[:svc.maxClassifications]
-	}
-	return classificationResult, nil
 }
