@@ -7,3 +7,8 @@ module.tar.gz: detect-and-classify
 	# the bundled module
 	rm -f $@
 	tar czf $@ $^
+
+
+
+android:
+	make -f Makefile_Android
