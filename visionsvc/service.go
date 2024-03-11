@@ -18,6 +18,7 @@ import (
 	"go.viam.com/rdk/logging"
 	"go.viam.com/rdk/resource"
 	"go.viam.com/rdk/services/vision"
+	"go.viam.com/rdk/utils"
 	vis "go.viam.com/rdk/vision"
 	"go.viam.com/rdk/vision/classification"
 	"go.viam.com/rdk/vision/objectdetection"
@@ -29,35 +30,45 @@ var PrettyName = "Viam detect and classify vision service"
 var Description = "A module of the Viam vision service that crops an image to an initial detection then runs other models to return detections"
 
 type Config struct {
-	Camera              string   `json:"camera"`
-	Detector            string   `json:"detector_service"`
-	DetectorConfidence  float64  `json:"detector_confidence"`
-	MaxDetections       int      `json:"max_detections"`
-	DetectorValidLabels []string `json:"detector_valid_labels"`
-	DetBorder           int      `json:"border"`
-	Classifier          string   `json:"classifier_service"`
-	MaxClassifications  int      `json:"max_classifications"`
-	LogImage            bool     `json:"log_image"`
-	ImagePath           string   `json:"image_path"`
+	Camera             string   `json:"camera"`
+	Detector           string   `json:"detector"`
+	DetectorConfidence float64  `json:"detector_confidence"`
+	MaxDetections      int      `json:"max_detections"`
+	DetectorLabels     []string `json:"detector_labels"`
+	DetPadding         int      `json:"padding"`
+	Classifier1        string   `json:"classifier1"`
+	Classifier2        string   `json:"classifier2"`
+	MaxClassifications int      `json:"max_classifications"`
+	LogImage           bool     `json:"log_image"`
+	ImagePath          string   `json:"image_path"`
+
+	// TODO: Implement list of classifiers
+	Pipeline []Classification `json:"classifiers"`
 }
 
+// Classification configuration type.
+type Classification struct {
+	Classifier string             `json:"classifier"`
+	Attributes utils.AttributeMap `json:"attributes"`
+}
 type myVisionSvc struct {
 	resource.Named
-	logger              logging.Logger
-	camera              camera.Camera
-	detector            vision.Service
-	detectorConfidence  float64
-	maxDetections       int
-	detectorValidLabels []string
-	detBorder           int
-	classifier          vision.Service
-	maxClassifications  int
-	logImage            bool
-	imagePath           string
-	mu                  sync.RWMutex
-	cancelCtx           context.Context
-	cancelFunc          func()
-	done                chan bool
+	logger             logging.Logger
+	camera             camera.Camera
+	detector           vision.Service
+	detectorConfidence float64
+	maxDetections      int
+	detectorLabels     []string
+	detPadding         int
+	classifier         vision.Service
+	classifier2        vision.Service
+	maxClassifications int
+	logImage           bool
+	imagePath          string
+	mu                 sync.RWMutex
+	cancelCtx          context.Context
+	cancelFunc         func()
+	done               chan bool
 }
 
 func init() {
@@ -98,13 +109,18 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 	if cfg.DetectorConfidence <= 0.0 {
 		return nil, errors.New("detector_confidence must be >= 0.0")
 	}
-	if cfg.Classifier == "" {
-		return nil, errors.New("classifier_service is required")
+	if cfg.Classifier1 == "" {
+		return nil, errors.New("classifier1_service is required")
 	}
+	if cfg.Classifier2 == "" {
+		return nil, errors.New("classifier2_service is required")
+	}
+	/* TODO: Deactivated until list of classifier is implemented
 	if cfg.MaxClassifications == 0 {
-		return nil, errors.New("classifier_results must be > 0")
+		return nil, errors.New("max_classifications must be > 0")
 	}
-	return []string{cfg.Camera, cfg.Detector, cfg.Classifier}, nil
+	*/
+	return []string{cfg.Camera, cfg.Detector, cfg.Classifier1, cfg.Classifier2}, nil
 }
 
 // Reconfigure reconfigures with new settings.
@@ -130,14 +146,18 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	}
 	// Get the detector confidence threshold
 	svc.detectorConfidence = newConf.DetectorConfidence
-	// Get the detector dependency
-	svc.classifier, err = vision.FromDependencies(deps, newConf.Classifier)
+	// Get the classifiers
+	svc.classifier, err = vision.FromDependencies(deps, newConf.Classifier1)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
+		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier1)
 	}
-	svc.detBorder = newConf.DetBorder
+	svc.classifier2, err = vision.FromDependencies(deps, newConf.Classifier2)
+	if err != nil {
+		return errors.Wrapf(err, "unable to get classifier2 %v ", newConf.Classifier2)
+	}
+	svc.detPadding = newConf.DetPadding
 	svc.maxDetections = newConf.MaxDetections
-	svc.detectorValidLabels = newConf.DetectorValidLabels
+	svc.detectorLabels = newConf.DetectorLabels
 	svc.logImage = newConf.LogImage
 	svc.imagePath = newConf.ImagePath
 	svc.maxClassifications = newConf.MaxClassifications
@@ -213,13 +233,13 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	var classificationResult classification.Classifications
 	for _, detection := range detections {
 		// Check if the detection score is above the configured threshold
-		if detection.Score() >= svc.detectorConfidence && slices.Contains(svc.detectorValidLabels, detection.Label()) {
+		if detection.Score() >= svc.detectorConfidence && slices.Contains(svc.detectorLabels, detection.Label()) {
 			// Increase/decrease bounding box according to detection border setting
 			rectangle := image.Rect(
-				detection.BoundingBox().Min.X-svc.detBorder,
-				detection.BoundingBox().Min.Y-svc.detBorder,
-				detection.BoundingBox().Max.X+svc.detBorder,
-				detection.BoundingBox().Max.Y+svc.detBorder)
+				detection.BoundingBox().Min.X-svc.detPadding,
+				detection.BoundingBox().Min.Y-svc.detPadding,
+				detection.BoundingBox().Max.X+svc.detPadding,
+				detection.BoundingBox().Max.Y+svc.detPadding)
 			croppedImg, err := cropImage(img, &rectangle)
 			if err != nil {
 				return nil, err
@@ -231,12 +251,18 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 					return nil, err
 				}
 			}
-			// Pass the cropped image to the classifier and get the classification with the highest confidence
-			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
+			// Pass the cropped image to the classifier1 and get the classification with the highest confidence
+			classification, err := svc.classifier.Classifications(ctx, croppedImg, 1, nil)
 			if err != nil {
 				return nil, err
 			}
 			classificationResult = append(classificationResult, classification...)
+			// Pass the cropped image to the classifier2 and get the classification with the highest confidence
+			classification2, err := svc.classifier2.Classifications(ctx, croppedImg, 1, nil)
+			if err != nil {
+				return nil, err
+			}
+			classificationResult = append(classificationResult, classification2...)
 		}
 	}
 	sort.Slice(classificationResult, func(i, j int) bool {

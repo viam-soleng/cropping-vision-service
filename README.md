@@ -48,18 +48,18 @@ Sample Service Configuration:
       "namespace": "rdk",
       "model": "viam-soleng:vision:detect-and-classify",
       "attributes": {
-        "classifier_service": "vision-age",
-        "max_detections": 5,
-        "image_path": "/Users/username/faces/",
-        "detector_confidence": 0.7,
-        "border": 30,
-        "detector_valid_labels": [
-          "face"
-        ],
-        "camera": "cam",
-        "detector_service": "vision-face",
-        "max_classifications": 3,
-        "log_image": false
+      "classifier1": "vision-gender",
+      "classifier2": "vision-age",
+      "image_path": "/Users/felixreichenbach/faces/",
+      "log_image": false,
+      "detector_confidence": 0.7,
+      "max_classifications": 2,
+      "max_detections": 1,
+      "camera": "cam",
+      "detector_labels": [
+        "face"
+      ],
+      "detector": "vision-face"
       }
     }
 ```
