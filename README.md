@@ -1,4 +1,4 @@
-# Viam Detect and Classify Vision Service
+# Viam Detect and Classify Vision Service (v0.0.6)
 
 This repository contains the `visionsvc` package, a module of the Viam vision service designed for image cropping and further analysis. It integrates several vision services, including object detection, age classification, and gender classification.
 
