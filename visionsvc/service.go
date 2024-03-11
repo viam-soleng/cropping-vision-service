@@ -42,7 +42,7 @@ type Config struct {
 	LogImage           bool     `json:"log_image"`
 	ImagePath          string   `json:"image_path"`
 
-	// TODO: Implement list of classifiers
+	// TODO: Implement list of classifiers -> https://github.com/viamrobotics/rdk/blob/main/components/camera/transformpipeline/transform.go#L110
 	Pipeline []Classification `json:"classifiers"`
 }
 
