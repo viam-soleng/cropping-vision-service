@@ -53,7 +53,7 @@ type Classification struct {
 }
 type myVisionSvc struct {
 	resource.Named
-	logger             logging.Logger
+	logger             logging.Logger //TODO: https://github.com/viamrobotics/rdk/blob/main/module/log.go#L62
 	camera             camera.Camera
 	detector           vision.Service
 	detectorConfidence float64
