@@ -110,10 +110,10 @@ func (cfg *Config) Validate(path string) ([]string, error) {
 		return nil, errors.New("detector_confidence must be >= 0.0")
 	}
 	if cfg.Classifier1 == "" {
-		return nil, errors.New("classifier1_service is required")
+		return nil, errors.New("classifier1 is required")
 	}
 	if cfg.Classifier2 == "" {
-		return nil, errors.New("classifier2_service is required")
+		return nil, errors.New("classifier2 is required")
 	}
 	/* TODO: Deactivated until list of classifier is implemented
 	if cfg.MaxClassifications == 0 {
@@ -149,7 +149,7 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	// Get the classifiers
 	svc.classifier, err = vision.FromDependencies(deps, newConf.Classifier1)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier1)
+		return errors.Wrapf(err, "unable to get classifier1 %v ", newConf.Classifier1)
 	}
 	svc.classifier2, err = vision.FromDependencies(deps, newConf.Classifier2)
 	if err != nil {
@@ -227,7 +227,7 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	if len(detections) > svc.maxDetections && svc.maxDetections != 0 {
 		detections = detections[:svc.maxDetections]
 	}
-	svc.logger.Infof("Detections #: %v/%v", len(detections), svc.maxDetections)
+	svc.logger.Debugf("Detections / Limit #: %v/%v", len(detections), svc.maxDetections)
 	svc.logger.Debugf("Detections Details: %v", detections)
 	// Result set to be returned
 	var classificationResult classification.Classifications
@@ -252,24 +252,31 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 				}
 			}
 			// Pass the cropped image to the classifier1 and get the classification with the highest confidence
-			classification, err := svc.classifier.Classifications(ctx, croppedImg, 1, nil)
+			cl1_classifications, err := svc.classifier.Classifications(ctx, croppedImg, 1, nil)
 			if err != nil {
 				return nil, err
 			}
-			classificationResult = append(classificationResult, classification...)
+			//classificationResult = append(classificationResult, classification...)
 			// Pass the cropped image to the classifier2 and get the classification with the highest confidence
-			classification2, err := svc.classifier2.Classifications(ctx, croppedImg, 1, nil)
+			cl2_classifications, err := svc.classifier2.Classifications(ctx, croppedImg, 1, nil)
 			if err != nil {
 				return nil, err
 			}
-			classificationResult = append(classificationResult, classification2...)
+
+			cl1, err := cl1_classifications.TopN(1)
+			if err != nil {
+				return nil, err
+			}
+			cl2, err := cl2_classifications.TopN(1)
+			if err != nil {
+				return nil, err
+			}
+			avgScore := (cl1[0].Score() + cl2[0].Score()) / 2
+			mergedLabel := cl1[0].Label() + " " + cl2[0].Label()
+			resClassification := classification.NewClassification(avgScore, mergedLabel)
+			classificationResult = append(classificationResult, resClassification)
+			svc.logger.Debugf("Classification Results: %v", classificationResult)
 		}
-	}
-	sort.Slice(classificationResult, func(i, j int) bool {
-		return classificationResult[i].Score() > classificationResult[j].Score()
-	})
-	if len(classificationResult) > svc.maxClassifications && svc.maxClassifications != 0 {
-		classificationResult = classificationResult[:svc.maxClassifications]
 	}
 	return classificationResult, nil
 }
