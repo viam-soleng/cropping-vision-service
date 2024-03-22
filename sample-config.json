@@ -1,0 +1,294 @@
+{
+  "components": [
+    {
+      "name": "camera",
+      "namespace": "rdk",
+      "type": "camera",
+      "model": "webcam",
+      "attributes": {
+        "video_path": "FDF90FEB-59E5-4FCF-AABD-DA03C4E19BFB"
+      },
+      "depends_on": []
+    },
+    {
+      "name": "see-face",
+      "namespace": "rdk",
+      "type": "camera",
+      "model": "transform",
+      "attributes": {
+        "pipeline": [
+          {
+            "attributes": {
+              "detector_name": "vision-face",
+              "valid_labels": [
+                "face"
+              ],
+              "confidence_threshold": 0.99
+            },
+            "type": "detections"
+          }
+        ],
+        "source": "camera"
+      },
+      "depends_on": []
+    },
+    {
+      "name": "see-gender",
+      "namespace": "rdk",
+      "type": "camera",
+      "model": "transform",
+      "attributes": {
+        "source": "camera",
+        "pipeline": [
+          {
+            "attributes": {
+              "confidence_threshold": 0.5,
+              "classifier_name": "vision-gender"
+            },
+            "type": "classifications"
+          }
+        ]
+      },
+      "depends_on": []
+    },
+    {
+      "name": "see-age",
+      "namespace": "rdk",
+      "type": "camera",
+      "model": "transform",
+      "attributes": {
+        "source": "camera",
+        "pipeline": [
+          {
+            "attributes": {
+              "confidence_threshold": 0.5,
+              "classifier_name": "vision-age"
+            },
+            "type": "classifications"
+          }
+        ]
+      },
+      "depends_on": []
+    },
+    {
+      "name": "see-gender-cropped",
+      "namespace": "rdk",
+      "type": "camera",
+      "model": "transform",
+      "attributes": {
+        "pipeline": [
+          {
+            "attributes": {
+              "classifier_name": "cropping",
+              "confidence_threshold": 0.01
+            },
+            "type": "classifications"
+          }
+        ],
+        "source": "camera"
+      },
+      "depends_on": []
+    }
+  ],
+  "services": [
+    {
+      "name": "the-face",
+      "namespace": "rdk",
+      "type": "mlmodel",
+      "model": "viam-labs:mlmodel:onnx-cpu",
+      "attributes": {
+        "package_reference": "viam-soleng/face-detector-onnx",
+        "model_path": "${packages.face-detector-onnx}/face_detector_640.onnx",
+        "label_path": "${packages.face-detector-onnx}/face_labels.txt",
+        "num_threads": 1
+      },
+      "depends_on": []
+    },
+    {
+      "name": "the-age",
+      "namespace": "rdk",
+      "type": "mlmodel",
+      "model": "viam-labs:mlmodel:onnx-cpu",
+      "attributes": {
+        "package_reference": "viam-soleng/age-classifier-onnx",
+        "model_path": "${packages.age-classifier-onnx}/age_googlenet.onnx",
+        "label_path": "${packages.age-classifier-onnx}/age_labels.txt",
+        "num_threads": 1
+      },
+      "depends_on": []
+    },
+    {
+      "name": "vision-face",
+      "namespace": "rdk",
+      "type": "vision",
+      "model": "mlmodel",
+      "attributes": {
+        "remap_input_names": {
+          "input": "image"
+        },
+        "remap_output_names": {
+          "boxes": "location",
+          "scores": "score"
+        },
+        "xmin_ymin_xmax_ymax_order": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "mlmodel_name": "the-face"
+      },
+      "depends_on": []
+    },
+    {
+      "name": "the-gender",
+      "namespace": "rdk",
+      "type": "mlmodel",
+      "model": "viam-labs:mlmodel:onnx-cpu",
+      "attributes": {
+        "model_path": "${packages.gender-classifier-onnx}/gender_googlenet.onnx",
+        "label_path": "${packages.gender-classifier-onnx}/gender_labels.txt",
+        "num_threads": 1,
+        "package_reference": "viam-soleng/gender-classifier-onnx"
+      },
+      "depends_on": []
+    },
+    {
+      "name": "vision-gender",
+      "namespace": "rdk",
+      "type": "vision",
+      "model": "mlmodel",
+      "attributes": {
+        "input_image_std_dev": [
+          0.229,
+          0.224,
+          0.225
+        ],
+        "mlmodel_name": "the-gender",
+        "remap_input_names": {
+          "input": "image"
+        },
+        "remap_output_names": {
+          "loss3/loss3_Y": "probability"
+        },
+        "input_image_bgr": true,
+        "input_image_mean_value": [
+          0.485,
+          0.456,
+          0.406
+        ]
+      },
+      "depends_on": []
+    },
+    {
+      "name": "vision-age",
+      "namespace": "rdk",
+      "type": "vision",
+      "model": "mlmodel",
+      "attributes": {
+        "input_image_bgr": true,
+        "input_image_mean_value": [
+          0,
+          0,
+          0
+        ],
+        "input_image_std_dev": [
+          0.0039,
+          0.0039,
+          0.0039
+        ],
+        "mlmodel_name": "the-age",
+        "remap_input_names": {
+          "input": "image"
+        },
+        "remap_output_names": {
+          "loss3/loss3_Y": "probability"
+        }
+      },
+      "depends_on": []
+    },
+    {
+      "name": "cropping",
+      "namespace": "rdk",
+      "type": "vision",
+      "model": "viam-soleng:vision:detect-and-classify",
+      "attributes": {
+        "log_image": false,
+        "detector": "vision-face",
+        "max_detections": 1,
+        "detector_confidence": 0.1,
+        "detector_labels": [
+          "face"
+        ],
+        "classifier2": "vision-age",
+        "image_path": "/change-me",
+        "max_classifications": 3,
+        "camera": "camera",
+        "classifier1": "vision-gender",
+        "padding": 40
+      },
+      "depends_on": []
+    }
+  ],
+  "modules": [
+    {
+      "type": "registry",
+      "name": "viam-labs_onnx-cpu",
+      "module_id": "viam-labs:onnx-cpu",
+      "version": "0.1.2"
+    },
+    {
+      "type": "local",
+      "name": "detect-classify",
+      "executable_path": "/Users/felixreichenbach/Documents/GitHub/detect-and-classify/bin/detect-and-classify"
+    }
+  ],
+  "packages": [
+    {
+      "name": "age-classifier-onnx",
+      "package": "viam-soleng/age-classifier-onnx",
+      "type": "ml_model",
+      "version": "latest"
+    },
+    {
+      "name": "gender-classifier-onnx",
+      "package": "viam-soleng/gender-classifier-onnx",
+      "type": "ml_model",
+      "version": "latest"
+    },
+    {
+      "name": "face-detector-onnx",
+      "package": "viam-soleng/face-detector-onnx",
+      "type": "ml_model",
+      "version": "latest"
+    }
+  ],
+  "agent_config": {
+    "subsystems": {
+      "viam-agent": {
+        "release_channel": "stable",
+        "pin_version": "",
+        "pin_url": "",
+        "disable_subsystem": false
+      },
+      "viam-server": {
+        "pin_url": "",
+        "disable_subsystem": false,
+        "release_channel": "stable",
+        "pin_version": ""
+      },
+      "agent-provisioning": {
+        "release_channel": "stable",
+        "pin_version": "",
+        "pin_url": "",
+        "disable_subsystem": false
+      },
+      "agent-syscfg": {
+        "pin_version": "",
+        "pin_url": "",
+        "disable_subsystem": false,
+        "release_channel": "stable"
+      }
+    }
+  }
+}
