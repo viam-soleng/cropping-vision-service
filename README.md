@@ -25,16 +25,16 @@ Dependencies are implicit.
 Sample Configuration Attributes:
 ```json
 {
-  "camera": "static-image",
-  "detector_service": "lp-vision",
+  "camera": "camera",
+  "detector_service": "object-detector",
   "detector_confidence": 0.5,
   "detector_valid_labels": [
     "label"
   ],
   "max_detections": 5,             
   "padding": 30,                
-  "vision_service": "ocr-vision",
-  "log_images": true,             
+  "vision_service": "classifier or detector vision service",
+  "log_images": false,             
   "images_path": "<- YOUR PATH ->"
 }
 ```
