@@ -26,7 +26,7 @@ import (
 var errUnimplemented = errors.New("unimplemented")
 var Model = resource.NewModel("viam-soleng", "vision", "detect-and-classify")
 var PrettyName = "Viam detect and classify vision service"
-var Description = "A module of the Viam vision service that crops an image to an initial detection then runs other models to return detections"
+var Description = "A module of the Viam vision service that crops an image to an initial detection bounding box and then processes the cropped image with the provided vision service"
 
 type Config struct {
 	Camera              string   `json:"camera"`
@@ -34,11 +34,10 @@ type Config struct {
 	DetectorConfidence  float64  `json:"detector_confidence"`
 	MaxDetections       int      `json:"max_detections"`
 	DetectorValidLabels []string `json:"detector_valid_labels"`
-	DetBorder           int      `json:"border"`
-	Classifier          string   `json:"classifier_service"`
-	MaxClassifications  int      `json:"max_classifications"`
-	LogImage            bool     `json:"log_image"`
-	ImagePath           string   `json:"image_path"`
+	DetBorder           int      `json:"padding"`
+	VisionService       string   `json:"vision_service"`
+	LogImage            bool     `json:"log_images"`
+	ImagePath           string   `json:"images_path"`
 }
 
 type myVisionSvc struct {
@@ -50,8 +49,7 @@ type myVisionSvc struct {
 	maxDetections       int
 	detectorValidLabels []string
 	detBorder           int
-	classifier          vision.Service
-	maxClassifications  int
+	visionService       vision.Service
 	logImage            bool
 	imagePath           string
 	mu                  sync.RWMutex
@@ -90,21 +88,18 @@ func newService(ctx context.Context, deps resource.Dependencies, conf resource.C
 
 func (cfg *Config) Validate(path string) ([]string, error) {
 	if cfg.Camera == "" {
-		return nil, errors.New("camera is required")
+		return nil, errors.New(`"camera" is required`)
 	}
 	if cfg.Detector == "" {
-		return nil, errors.New("detector is required")
+		return nil, errors.New(`"detector_service" is required`)
 	}
 	if cfg.DetectorConfidence <= 0.0 {
-		return nil, errors.New("detector_confidence must be >= 0.0")
+		return nil, errors.New(`"detector_confidence" must be >= 0.0`)
 	}
-	if cfg.Classifier == "" {
-		return nil, errors.New("classifier_service is required")
+	if cfg.VisionService == "" {
+		return nil, errors.New(`"vision_service" is required`)
 	}
-	if cfg.MaxClassifications == 0 {
-		return nil, errors.New("classifier_results must be > 0")
-	}
-	return []string{cfg.Camera, cfg.Detector, cfg.Classifier}, nil
+	return []string{cfg.Camera, cfg.Detector, cfg.VisionService}, nil
 }
 
 // Reconfigure reconfigures with new settings.
@@ -121,33 +116,40 @@ func (svc *myVisionSvc) Reconfigure(ctx context.Context, deps resource.Dependenc
 	// Get the camera
 	svc.camera, err = camera.FromDependencies(deps, newConf.Camera)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get source camera %v for image sourcing...", newConf.Detector)
+		return errors.Wrapf(err, `unable to get the "camera": %v for image sourcing...`, newConf.Detector)
 	}
 	// Get the face cropper
 	svc.detector, err = vision.FromDependencies(deps, newConf.Detector)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get Object Detector %v for image cropping...", newConf.Detector)
+		return errors.Wrapf(err, `unable to get "detector_service": %v for image cropping...`, newConf.Detector)
 	}
 	// Get the detector confidence threshold
 	svc.detectorConfidence = newConf.DetectorConfidence
 	// Get the detector dependency
-	svc.classifier, err = vision.FromDependencies(deps, newConf.Classifier)
+	svc.visionService, err = vision.FromDependencies(deps, newConf.VisionService)
 	if err != nil {
-		return errors.Wrapf(err, "unable to get classifier %v ", newConf.Classifier)
+		return errors.Wrapf(err, `unable to get "vision_service": %v `, newConf.VisionService)
 	}
 	svc.detBorder = newConf.DetBorder
 	svc.maxDetections = newConf.MaxDetections
 	svc.detectorValidLabels = newConf.DetectorValidLabels
 	svc.logImage = newConf.LogImage
 	svc.imagePath = newConf.ImagePath
-	svc.maxClassifications = newConf.MaxClassifications
 	svc.logger.Debug("**** Reconfigured ****")
 	return nil
 }
 
 // Classifications can be implemented to extend functionality but returns unimplemented currently.
 func (svc *myVisionSvc) Classifications(ctx context.Context, img image.Image, n int, extra map[string]interface{}) (classification.Classifications, error) {
-	return svc.detectAndClassify(ctx, img)
+	croppedImages, err := svc.cropDetections(ctx, img)
+	if err != nil {
+		return nil, err
+	}
+	result, err := svc.classify(ctx, croppedImages, n)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ClassificationsFromCamera can be implemented to extend functionality but returns unimplemented currently.
@@ -158,20 +160,43 @@ func (svc *myVisionSvc) ClassificationsFromCamera(ctx context.Context, cameraNam
 		return nil, err
 	}
 	// gets an image from the camera stream
-	img, release, err := stream.Next(context.Background())
+	image, release, err := stream.Next(context.Background())
 	if err != nil {
 		return nil, err
 	}
 	defer release()
-	return svc.detectAndClassify(ctx, img)
+	images, err := svc.cropDetections(ctx, image)
+	if err != nil {
+		return nil, err
+	}
+	return svc.classify(ctx, images, n)
 }
 
-func (svc *myVisionSvc) Detections(ctx context.Context, img image.Image, extra map[string]interface{}) ([]objectdetection.Detection, error) {
-	return nil, errUnimplemented
+func (svc *myVisionSvc) Detections(ctx context.Context, image image.Image, extra map[string]interface{}) ([]objectdetection.Detection, error) {
+	images, err := svc.cropDetections(ctx, image)
+	if err != nil {
+		return nil, err
+	}
+	return svc.detect(ctx, images)
 }
 
 func (svc *myVisionSvc) DetectionsFromCamera(ctx context.Context, camera string, extra map[string]interface{}) ([]objectdetection.Detection, error) {
-	return nil, errUnimplemented
+	// gets the stream from a camera
+	stream, err := svc.camera.Stream(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	// gets an image from the camera stream
+	image, release, err := stream.Next(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	images, err := svc.cropDetections(ctx, image)
+	if err != nil {
+		return nil, err
+	}
+	return svc.detect(ctx, images)
 }
 
 // ObjectPointClouds can be implemented to extend functionality but returns unimplemented currently.
@@ -193,7 +218,7 @@ func (svc *myVisionSvc) Close(ctx context.Context) error {
 
 // Take an input image, detect objects, crop the image down to the detected bounding box and
 // hand over to classifier for more accurate classifications
-func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) (classification.Classifications, error) {
+func (svc *myVisionSvc) cropDetections(ctx context.Context, img image.Image) ([]image.Image, error) {
 	// Get detections from the provided Image
 	detections, err := svc.detector.Detections(ctx, img, nil)
 	if err != nil {
@@ -215,8 +240,7 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	}
 	svc.logger.Debugf("Detections #: %v/%v", len(detections), svc.maxDetections)
 	svc.logger.Debugf("Detections Details: %v", detections)
-	// Result set to be returned
-	var classificationResult classification.Classifications
+	croppedImages := []image.Image{}
 	for _, detection := range detections {
 		// Increase/decrease bounding box according to detection border setting
 		rectangle := image.Rect(
@@ -235,21 +259,44 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 				return nil, err
 			}
 		}
-		// Pass the cropped image to the classifier and get the classification with the highest confidence
-		classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
+		croppedImages = append(croppedImages, croppedImg)
+	}
+	return croppedImages, nil
+}
+
+// Pass the cropped images to the configured classification vision service and get the classifications with the highest confidence
+func (svc *myVisionSvc) classify(ctx context.Context, images []image.Image, n int) (classification.Classifications, error) {
+	classificationResult := classification.Classifications{}
+	for _, image := range images {
+		class, err := svc.visionService.Classifications(ctx, image, n, nil)
 		if err != nil {
 			return nil, err
 		}
-		classificationResult = append(classificationResult, classification...)
-
+		classificationResult = append(classificationResult, class...)
 	}
 	sort.Slice(classificationResult, func(i, j int) bool {
 		return classificationResult[i].Score() > classificationResult[j].Score()
 	})
-	if len(classificationResult) > svc.maxClassifications && svc.maxClassifications != 0 {
-		classificationResult = classificationResult[:svc.maxClassifications]
-	}
 	return classificationResult, nil
+}
+
+// Pass the cropped images to the configured detection vision service and get the detections with the highest confidence
+func (svc *myVisionSvc) detect(ctx context.Context, images []image.Image) ([]objectdetection.Detection, error) {
+	detectionResult := []objectdetection.Detection{}
+	for _, image := range images {
+		class, err := svc.visionService.Detections(ctx, image, nil)
+		if err != nil {
+			return nil, err
+		}
+		detectionResult = append(detectionResult, class...)
+	}
+	sort.Slice(detectionResult, func(i, j int) bool {
+		return detectionResult[i].Score() > detectionResult[j].Score()
+	})
+	if len(detectionResult) > svc.maxDetections && svc.maxDetections != 0 {
+		detectionResult = detectionResult[:svc.maxDetections]
+	}
+	return detectionResult, nil
 }
 
 // Crops images based upon bounding box rectangles
