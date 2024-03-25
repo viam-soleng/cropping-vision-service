@@ -199,45 +199,49 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	if err != nil {
 		return nil, err
 	}
-	// sort detections based upon score
+	// Filter detections by detector confidence level and valid labels settings
+	filterFunc := func(detection objectdetection.Detection) bool {
+		return (detection.Score() >= svc.detectorConfidence) && (slices.Contains(svc.detectorValidLabels, detection.Label()) || len(svc.detectorValidLabels) == 0)
+	}
+	detections = filter(detections, filterFunc)
+
+	// Sort filtered detections based upon score
 	sort.Slice(detections, func(i, j int) bool {
 		return detections[i].Score() > detections[j].Score()
 	})
-	// trim detections based upon max detections setting / if detectorMaxDetections = 0 -> no limit
+	// Trim detections based upon max detections setting / if detectorMaxDetections = 0 -> no limit
 	if len(detections) > svc.maxDetections && svc.maxDetections != 0 {
 		detections = detections[:svc.maxDetections]
 	}
-	svc.logger.Infof("Detections #: %v/%v", len(detections), svc.maxDetections)
+	svc.logger.Debugf("Detections #: %v/%v", len(detections), svc.maxDetections)
 	svc.logger.Debugf("Detections Details: %v", detections)
 	// Result set to be returned
 	var classificationResult classification.Classifications
 	for _, detection := range detections {
-		// Check if the detection score is above the configured threshold
-		if detection.Score() >= svc.detectorConfidence && slices.Contains(svc.detectorValidLabels, detection.Label()) {
-			// Increase/decrease bounding box according to detection border setting
-			rectangle := image.Rect(
-				detection.BoundingBox().Min.X-svc.detBorder,
-				detection.BoundingBox().Min.Y-svc.detBorder,
-				detection.BoundingBox().Max.X+svc.detBorder,
-				detection.BoundingBox().Max.Y+svc.detBorder)
-			croppedImg, err := cropImage(img, &rectangle)
-			if err != nil {
-				return nil, err
-			}
-			// Save cropped images to disk
-			if svc.logImage {
-				err := saveImage(croppedImg, svc.imagePath)
-				if err != nil {
-					return nil, err
-				}
-			}
-			// Pass the cropped image to the classifier and get the classification with the highest confidence
-			classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
-			if err != nil {
-				return nil, err
-			}
-			classificationResult = append(classificationResult, classification...)
+		// Increase/decrease bounding box according to detection border setting
+		rectangle := image.Rect(
+			detection.BoundingBox().Min.X-svc.detBorder,
+			detection.BoundingBox().Min.Y-svc.detBorder,
+			detection.BoundingBox().Max.X+svc.detBorder,
+			detection.BoundingBox().Max.Y+svc.detBorder)
+		croppedImg, err := cropImage(img, &rectangle)
+		if err != nil {
+			return nil, err
 		}
+		// Save cropped images to disk
+		if svc.logImage {
+			err := saveImage(croppedImg, svc.imagePath)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Pass the cropped image to the classifier and get the classification with the highest confidence
+		classification, err := svc.classifier.Classifications(ctx, croppedImg, svc.maxClassifications, nil)
+		if err != nil {
+			return nil, err
+		}
+		classificationResult = append(classificationResult, classification...)
+
 	}
 	sort.Slice(classificationResult, func(i, j int) bool {
 		return classificationResult[i].Score() > classificationResult[j].Score()
@@ -248,6 +252,7 @@ func (svc *myVisionSvc) detectAndClassify(ctx context.Context, img image.Image) 
 	return classificationResult, nil
 }
 
+// Crops images based upon bounding box rectangles
 func cropImage(img image.Image, rect *image.Rectangle) (image.Image, error) {
 	// The cropping operation is done by creating a new image of the size of the rectangle
 	// and drawing the relevant part of the original image onto the new image.
@@ -256,6 +261,7 @@ func cropImage(img image.Image, rect *image.Rectangle) (image.Image, error) {
 	return cropped, nil
 }
 
+// Saves images to a path on disk
 func saveImage(image image.Image, imagePath string) error {
 	buf := new(bytes.Buffer)
 	err := jpeg.Encode(buf, image, nil)
@@ -275,4 +281,14 @@ func saveImage(image image.Image, imagePath string) error {
 	}
 	jpeg.Encode(f, image, &opt)
 	return nil
+}
+
+// Generic helper function to filter slices
+func filter[T any](ss []T, test func(T) bool) (ret []T) {
+	for _, s := range ss {
+		if test(s) {
+			ret = append(ret, s)
+		}
+	}
+	return
 }
