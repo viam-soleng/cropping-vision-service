@@ -2,3 +2,5 @@ viam-cropping-vision-service
 bin/
 .DS_Store
 faces/
+
+detect-and-classify

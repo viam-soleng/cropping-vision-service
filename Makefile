@@ -8,7 +8,8 @@ module.tar.gz: detect-and-classify
 	rm -f $@
 	tar czf $@ $^
 
-
+clean:
+	rm -f detect-and-classify
 
 android:
 	make -f Makefile_Android
