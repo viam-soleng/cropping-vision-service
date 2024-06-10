@@ -21,6 +21,7 @@ import (
 	vis "go.viam.com/rdk/vision"
 	"go.viam.com/rdk/vision/classification"
 	"go.viam.com/rdk/vision/objectdetection"
+	"go.viam.com/rdk/vision/viscapture"
 )
 
 var errUnimplemented = errors.New("unimplemented")
@@ -201,6 +202,21 @@ func (svc *myVisionSvc) DetectionsFromCamera(ctx context.Context, camera string,
 
 // ObjectPointClouds can be implemented to extend functionality but returns unimplemented currently.
 func (s *myVisionSvc) GetObjectPointClouds(ctx context.Context, cameraName string, extra map[string]interface{}) ([]*vis.Object, error) {
+	return nil, errUnimplemented
+}
+
+// CaptureAllFromCamera can be implemented to extend functionality but returns unimplemented currently.
+func (vm *myVisionSvc) CaptureAllFromCamera(
+	ctx context.Context,
+	cameraName string,
+	opt viscapture.CaptureOptions,
+	extra map[string]interface{},
+) (viscapture.VisCapture, error) {
+	return viscapture.VisCapture{}, errUnimplemented
+}
+
+// GetProperties can be implemented to extend functionality but returns unimplemented currently.
+func (vm *myVisionSvc) GetProperties(context.Context, map[string]interface{}) (*vision.Properties, error) {
 	return nil, errUnimplemented
 }
 
