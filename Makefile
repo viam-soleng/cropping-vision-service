@@ -6,7 +6,7 @@ ifeq ($(UNAME), Darwin)
 endif
 ifeq ($(UNAME), Linux)
 	@echo "Linux"
-	sudo apt install libjpeg-dev
+	sudo apt install pkg-config
 endif
 	# the executable
 	go build -o $@ -ldflags "-s -w" -tags osusergo,netgo
