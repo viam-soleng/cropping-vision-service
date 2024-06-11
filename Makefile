@@ -1,7 +1,6 @@
 detect-and-classify: *.go */*.go go.*
 	# the executable
-	go build -o $@
-	file $@
+	go build -o $@ -ldflags "-s -w" -tags osusergo,netgo
 
 module.tar.gz: detect-and-classify
 	# the bundled module
